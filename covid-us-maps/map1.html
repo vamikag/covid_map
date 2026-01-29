@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>COVID-19 Rates in the United States (2020)</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.8.1/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.8.1/mapbox-gl.js"></script>
+
+  <!-- Google font (Open Sans) -->
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: 'Open Sans', sans-serif;
+    }
+
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+
+    /* Title */
+    #title {
+      position: absolute;
+      top: 0;
+      left: 0;
+      margin-top: 18px;
+      margin-left: 18px;
+      font-size: 22pt;
+      color: #111;
+      background: rgba(255,255,255,0.85);
+      padding: 10px 12px;
+      border-radius: 6px;
+    }
+
+    #subtitle {
+      position: absolute;
+      top: 0;
+      left: 0;
+      margin-top: 72px;
+      margin-left: 18px;
+      font-size: 12pt;
+      color: #111;
+      background: rgba(255,255,255,0.85);
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 190px;
+      background: rgba(255,255,255,0.95);
+      margin-right: 18px;
+      margin-bottom: 18px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 11pt;
+      color: #111;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+    }
+
+    .swatch {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+
+    a { color: #111; }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div id="title">COVID-19 Case Rates</div>
+  <div id="subtitle">U.S. Counties — 2020 (cases per 1,000 residents)</div>
+
+  <div id="legend"></div>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoidmFtaWthZyIsImEiOiJjbWt6MHV3YjEwMmdyM3FxMGZzNzlob3lvIn0.9ml0_x6-glv7a9AdaYc3QA';
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/light-v10',
+      center: [-98, 38],
+      zoom: 3,
+      minZoom: 2
+    });
+
+  
+    map.setProjection('albers');
+
+   
+    const RATE_FIELD = 'rates';
+
+    // Choropleth breaks (cases per 1,000) 
+    const breaks = [0, 25, 50, 75, 100, 150];
+    const colors = ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#2171b5'];
+
+    function buildLegend() {
+      const legend = document.getElementById('legend');
+      const rows = [];
+      rows.push(`<div style="font-weight:700; margin-bottom:6px;">Legend (rate / 1,000)</div>`);
+
+      for (let i = 0; i < breaks.length; i++) {
+        const from = breaks[i];
+        const to = (i < breaks.length - 1) ? breaks[i + 1] : null;
+
+        const label = (to === null) ? `${from}+` : `${from}–${to}`;
+        rows.push(`
+          <div class="legend-row">
+            <div class="swatch" style="background:${colors[i]};"></div>
+            <div>${label}</div>
+          </div>
+        `);
+      }
+
+      rows.push(`<div style="font-size:10pt; margin-top:8px; text-align:right;">
+        Sources: <a href="https://www.nytimes.com/interactive/2021/us/covid-cases.html" target="_blank">NYT</a>,
+        <a href="https://www.census.gov/programs-surveys/acs" target="_blank">ACS</a>,
+        <a href="https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html" target="_blank">U.S. Census</a>
+      </div>`);
+
+      legend.innerHTML = rows.join('');
+    }
+
+    map.on('load', () => {
+      map.addSource('rates', {
+        type: 'geojson',
+        data: 'assets/us-covid-2020-rates.json'
+      });
+
+      map.addLayer({
+        id: 'rates-fill',
+        type: 'fill',
+        source: 'rates',
+        paint: {
+          // Choropleth using step expression
+          'fill-color': [
+            'step',
+            ['coalesce', ['to-number', ['get', RATE_FIELD]], 0],
+            colors[0], breaks[1],
+            colors[1], breaks[2],
+            colors[2], breaks[3],
+            colors[3], breaks[4],
+            colors[4], breaks[5],
+            colors[5]
+          ],
+          'fill-opacity': 0.75
+        }
+      });
+
+      map.addLayer({
+        id: 'rates-outline',
+        type: 'line',
+        source: 'rates',
+        paint: {
+          'line-color': 'rgba(0,0,0,0.25)',
+          'line-width': 0.4
+        }
+      });
+
+      buildLegend();
+
+     map.on('click', 'rates-fill', (e) => {
+  const props = e.features[0].properties;
+
+  new mapboxgl.Popup()
+    .setLngLat(e.lngLat)
+    .setHTML(`
+      <strong>${props.county}, ${props.state}</strong><br/>
+      Rate: ${Number(props.rates).toFixed(1)} per 1,000
+    `)
+    .addTo(map);
+});
+
+map.on('mouseenter', 'rates-fill', () => {
+  map.getCanvas().style.cursor = 'pointer';
+});
+
+map.on('mouseleave', 'rates-fill', () => {
+  map.getCanvas().style.cursor = '';
+});
+
+
+    });
+  </script>
+</body>
+
+</html>
